@@ -35,7 +35,6 @@ visualizations = []
 
 # Constants for API
 API_URL = "https://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
-AIPROXY_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6IjIyZjIwMDEzMzVAZHMuc3R1ZHkuaWl0bS5hYy5pbiJ9.pIoT_vGuPsrLtOTlgw_lbd13tWtzo7VN0T_j00Bjzqw"
 
 def load_data(filepath):
     """
@@ -117,36 +116,52 @@ def query_llm_with_httpx(prompt, model="gpt-4o-mini", max_retries=5, retry_delay
     """
     Query the LLM using the AI Proxy with httpx, with retry logic for rate limiting.
     """
-    headers = {
-        "Authorization": f"Bearer {AIPROXY_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are a helpful data analysis assistant."},
-            {"role": "user", "content": prompt},
-        ],
-    }
+    print("Generating response using LLM...")  # Debugging line
+    try:
+        # Get the AIPROXY_TOKEN from the environment variable
+        token = os.environ.get("AIPROXY_TOKEN")
+        if not token:
+            print("Error: AIPROXY_TOKEN environment variable is not set.")
+            return None
 
-    for attempt in range(max_retries):
-        try:
-            response = httpx.post(API_URL, headers=headers, json=payload, timeout=30.0)
-            response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"]
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                print(f"Rate limit exceeded. Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
-                time.sleep(retry_delay)
-            else:
-                print(f"HTTP error occurred: {e}")
+        # Prepare headers and payload
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a helpful data analysis assistant."},
+                {"role": "user", "content": prompt},
+            ],
+        }
+
+        # Retry logic for handling rate limits
+        for attempt in range(max_retries):
+            try:
+                response = httpx.post(API_URL, headers=headers, json=payload, timeout=30.0)
+                response.raise_for_status()
+                return response.json()["choices"][0]["message"]["content"]
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    print(f"Rate limit exceeded. Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                else:
+                    print(f"HTTP error occurred: {e}")
+                    break
+            except httpx.RequestError as e:
+                print(f"Request error occurred: {e}")
                 break
-        except httpx.RequestError as e:
-            print(f"Request error occurred: {e}")
-            break
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            break
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+                break
+
+    except KeyError as e:
+        print(f"Missing environment variable: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
     return None
 
 def generate_markdown_story(analysis, visualizations):
